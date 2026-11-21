@@ -1,0 +1,38 @@
+NAYSIN2 - PERBAIKAN ASISTEN MENU (STATUS MENU NONAKTIF)
+======================================================
+
+MASALAH
+- Tes `never recommends inactive menu items` menerima FALLBACK, padahal
+  menu Cold Brew tercatat tetapi sedang tidak tersedia.
+- Modul rule-based di source refactor memakai implementasi pencarian menu
+  sederhana sehingga beberapa intent lama tidak lagi terlayani.
+
+ISI PATCH
+- src/backend/assistant/menu-ai-service.ts
+  Mengembalikan intent daftar/kategori/anggaran/perbandingan/konteks yang sudah
+  dikembangkan sebelumnya dan memperbaiki pengecekan status menu.
+  Pengambilan data: menu aktif untuk katalog dan menu tidak aktif untuk
+  menjawab pertanyaan spesifik mengenai ketersediaannya.
+
+CARA PASANG
+1. Simpan cadangan src/backend/assistant/menu-ai-service.ts Anda.
+2. Ekstrak ZIP ini ke folder proyek:
+   D:\Kuliah\Manajemen Proyek\Naysin2
+   dan pilih Replace saat diminta.
+3. Jalankan dari terminal proyek:
+   npx.cmd tsc --noEmit
+   npx.cmd vitest run tests/unit/menu-ai-service.test.ts
+   npx.cmd vitest run tests/unit/menu-assistant-intents.test.ts tests/unit/menu-name-priority.test.ts
+   npx.cmd vitest run tests/integration/ai-benchmark.test.ts
+   npx.cmd vitest run
+4. Jika semuanya lulus, npm.cmd run dev -- --port 3001
+
+TIDAK PERLU
+- Tidak perlu prisma db push, prisma generate, npm install, atau seed ulang.
+- Tidak mengubah schema database, frontend, Gemini API, atau endpoint WhatsApp.
+
+CATATAN PENGUJIAN
+- Pemeriksaan mandiri di lingkungan pembuat: 5 kasus fokus, larangan
+  menu nonaktif dalam daftar, dan 30 pertanyaan benchmark: lulus.
+- Vitest lengkap tidak dapat dijalankan di lingkungan pembuat karena
+  dependensi Vitest tidak terpasang secara lengkap.

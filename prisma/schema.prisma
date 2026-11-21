@@ -1,0 +1,204 @@
+// Prisma schema for NaysIn (PostgreSQL)
+// Respecting PRD v1.1 Data Integrity & Auditing rules
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+  directUrl = env("DIRECT_URL")
+}
+
+enum Role {
+  OWNER
+  STAFF
+}
+
+enum TransactionType {
+  IN
+  OUT
+  ADJUSTMENT
+  WASTE
+}
+
+enum WasteReason {
+  EXPIRED
+  DAMAGED
+  SPOILED
+  OTHER
+}
+
+model User {
+  id           String             @id @default(uuid())
+  name         String
+  email        String?            @unique // retained for legacy users, no longer used for login
+  username     String?            @unique // nullable for safe migration of existing accounts
+  employeeId   String?            @unique // optional employee ID, normalized uppercase
+  passwordHash String
+  role         Role               @default(STAFF)
+  isActive     Boolean            @default(true)
+  createdAt    DateTime           @default(now())
+  updatedAt    DateTime           @updatedAt
+
+  transactions StockTransaction[]
+}
+
+model Ingredient {
+  id           String             @id @default(uuid())
+  name         String             @unique
+  unit         String             // smallest inventory package, e.g. kotak
+  alternateUnit String?           // optional larger package, e.g. dus
+  unitsPerAlternate Int?          // number of base packages per larger package
+  currentStock Float              @default(0)
+  minimumStock Float              @default(0)
+  isActive     Boolean            @default(true)
+  notes        String?
+  createdAt    DateTime           @default(now())
+  updatedAt    DateTime           @updatedAt
+
+  batches      IngredientBatch[]
+  transactions StockTransaction[]
+  menuItems    MenuIngredient[]
+
+  @@index([isActive])
+}
+
+model IngredientBatch {
+  id                String             @id @default(uuid())
+  ingredientId      String
+  lotCode           String?
+  quantityRemaining Float
+  receivedAt        DateTime           @default(now())
+  expiresAt         DateTime?
+  createdAt         DateTime           @default(now())
+  updatedAt         DateTime           @updatedAt
+
+  ingredient        Ingredient         @relation(fields: [ingredientId], references: [id], onDelete: Restrict)
+  transactions      StockTransaction[]
+
+  @@index([ingredientId])
+  @@index([expiresAt])
+}
+
+model StockTransaction {
+  id              String          @id @default(uuid())
+  ingredientId    String
+  batchId         String?
+  userId          String
+  type            TransactionType
+  quantity        Float           // normalized base-package quantity (new count for opname)
+  enteredQuantity Float?          // original input, for audit
+  enteredUnit     String?
+  enteredFactor   Int?
+  beforeQty       Float
+  afterQty        Float
+  note            String?
+  wasteReason     WasteReason?
+  idempotencyKey  String?         @unique
+  createdAt       DateTime        @default(now())
+
+  ingredient      Ingredient       @relation(fields: [ingredientId], references: [id], onDelete: Restrict)
+  batch           IngredientBatch? @relation(fields: [batchId], references: [id], onDelete: SetNull)
+  user            User             @relation(fields: [userId], references: [id], onDelete: Restrict)
+
+  @@index([ingredientId])
+  @@index([userId])
+  @@index([createdAt])
+  @@index([type])
+}
+
+model Menu {
+  id          String           @id @default(uuid())
+  name        String           @unique
+  category    String           // e.g. "Kopi", "Non-Kopi", "Camilan"
+  description String
+  price       Int?             // verified price or null if unconfirmed
+  isAvailable Boolean          @default(true)
+  notes       String?
+  createdAt   DateTime         @default(now())
+  updatedAt   DateTime         @updatedAt
+
+  aliases     MenuAlias[]
+  ingredients MenuIngredient[]
+  tags        MenuTag[]
+  image       MenuImage?
+
+  @@index([isAvailable])
+  @@index([category])
+}
+
+// Gambar menu disimpan di PostgreSQL agar tetap tersedia setelah deploy
+// (filesystem serverless tidak permanen). Setiap menu maksimal satu gambar.
+model MenuImage {
+  menuId    String   @id
+  bytes     Bytes
+  mimeType  String
+  updatedAt DateTime @updatedAt
+
+  menu      Menu     @relation(fields: [menuId], references: [id], onDelete: Cascade)
+}
+
+model MenuTag {
+  id        String   @id @default(uuid())
+  name      String
+  key       String   @unique // normalized case-insensitive tag name
+  createdAt DateTime @default(now())
+  menus     Menu[]
+}
+
+model MenuAlias {
+  id        String   @id @default(uuid())
+  menuId    String
+  alias     String   @unique // normalized lowercase
+  createdAt DateTime @default(now())
+
+  menu      Menu     @relation(fields: [menuId], references: [id], onDelete: Cascade)
+
+  @@index([menuId])
+}
+
+model MenuIngredient {
+  id           String     @id @default(uuid())
+  menuId       String
+  ingredientId String
+  quantity     Float?
+  unit         String?
+
+  menu         Menu       @relation(fields: [menuId], references: [id], onDelete: Cascade)
+  ingredient   Ingredient @relation(fields: [ingredientId], references: [id], onDelete: Restrict)
+
+  @@unique([menuId, ingredientId])
+}
+
+model ChatLog {
+  id                String   @id @default(uuid())
+  channel           String   // "WEB" or "WHATSAPP"
+  externalMessageId String?  @unique
+  question          String
+  answer            String
+  status            String   // "SUCCESS", "FALLBACK", "ERROR"
+  modelVersion      String?
+  createdAt         DateTime @default(now())
+
+  @@index([createdAt])
+  @@index([channel])
+}
+
+model Setting {
+  key       String   @id
+  value     String
+  updatedAt DateTime @updatedAt
+}
+
+// Shared quota counters for anonymous public menu-assistant requests.
+// Keeping these in PostgreSQL prevents bypassing limits across serverless instances.
+model PublicAssistantQuota {
+  key       String   @id
+  count     Int      @default(0)
+  expiresAt DateTime
+  updatedAt DateTime @updatedAt
+
+  @@index([expiresAt])
+}

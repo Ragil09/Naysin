@@ -1,0 +1,18 @@
+# Credentials
+.env
+.env.*
+!.env.example
+# Next.js outputs and dependencies
+node_modules/
+.next/
+out/
+build/
+# Local logs
+*.log
+npm-debug.log*
+# Tool caches
+*.tsbuildinfo
+# OS / editors
+.DS_Store
+Thumbs.db
+.vscode/
